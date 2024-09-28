@@ -1,6 +1,7 @@
 import discord
 from akinator_python import Akinator
-from redbot.core import commands, Red, Config
+from redbot.core import commands, Config
+from redbot.core.bot import Red
 
 from .views import AkiView, channel_is_nsfw
 
