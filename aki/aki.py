@@ -1,17 +1,10 @@
-import logging
-import aiohttp
-import akinator
 import discord
-from akinator.async_aki import Akinator
-from redbot.core import commands
-from redbot.core.bot import Red
-from redbot.core.config import Config
+from akinator_python import Akinator
+from redbot.core import commands, Red, Config
 
 from .views import AkiView, channel_is_nsfw
 
 log = logging.getLogger("red.phenom4n4n.aki")
-
-VALID_LANGUAGES = {"en", "fr", "es", "de", "it", "nl", "pt", "tr", "ar", "ru", "jp"}
 
 class Aki(commands.Cog):
     """
@@ -20,12 +13,6 @@ class Aki(commands.Cog):
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
-        self.config = Config.get_conf(
-            self,
-            identifier=8237578807127857,
-            force_registration=True,
-        )
-        self.session = aiohttp.ClientSession()
 
     __version__ = "1.2.0"
 
@@ -37,9 +24,6 @@ class Aki(commands.Cog):
     async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
         return
 
-    async def cog_unload(self):
-        await self.session.close()
-
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
@@ -47,32 +31,51 @@ class Aki(commands.Cog):
         """
         Start a game of Akinator!
         """
-        if language not in VALID_LANGUAGES:
+        if language not in {"en", "fr", "es", "de", "it", "nl", "pt", "tr", "ar", "ru", "jp"}:
             await ctx.send(
-                "Invalid language. Please choose from the following: "
-                + ", ".join(VALID_LANGUAGES)
+                "Invalid language. Please choose from the following: en, fr, es, de, it, nl, pt, tr, ar, ru, jp"
             )
             return
 
-        await ctx.typing()
-        aki = Akinator()
-        child_mode = not channel_is_nsfw(ctx.channel)
+        aki = Akinator(language=language)
+        question = aki.start_game()
+        await ctx.send(question)
+
+        while aki.progression <= 80:
+            def check(m):
+                return m.author == ctx.author and m.channel == ctx.channel
+
+            try:
+                msg = await self.bot.wait_for("message", check=check, timeout=30.0)
+            except asyncio.TimeoutError:
+                await ctx.send("You took too long to respond!")
+                return
+
+            answer = msg.content.lower()
+            if answer not in ["y", "n", "idk", "p", "pn", "b"]:
+                await ctx.send("Please respond with 'y', 'n', 'idk', 'p', 'pn', or 'b'.")
+                continue
+
+            if answer == "b":
+                question = aki.go_back()
+            else:
+                question = aki.post_answer(answer)
+
+            await ctx.send(question)
+
+        aki.win()
+        await ctx.send(f"I guess: {aki.name} - {aki.description}\nIs this correct? (y/n)")
+
+        def check_final(m):
+            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ["y", "n"]
+
         try:
-            await aki.start_game(
-                language=language.replace(" ", "_"),
-                child_mode=child_mode,
-                client_session=self.session,
-            )
-        except akinator.InvalidLanguageError:
-            await ctx.send(
-                "Invalid language. Refer here to view valid languages.\n<https://github.com/NinjaSnail1080/akinator.py#functions>"
-            )
-        except AttributeError as e:
-            log.error("An AttributeError occurred: %s", e)
-            await ctx.send("An unexpected error occurred while starting the game. Please try again.")
-        except Exception as e:
-            log.error("An error occurred while starting the Akinator game: %s", e)
-            await ctx.send("I encountered an error while connecting to the Akinator servers.")
+            msg = await self.bot.wait_for("message", check=check_final, timeout=30.0)
+        except asyncio.TimeoutError:
+            await ctx.send("You took too long to respond!")
+            return
+
+        if msg.content.lower() == "y":
+            await ctx.send("Yay! I guessed it right!")
         else:
-            aki_color = discord.Color(0xE8BC90)
-            await AkiView(aki, aki_color, author_id=ctx.author.id).start(ctx)
+            await ctx.send("Oh no! Let's try again next time.")
