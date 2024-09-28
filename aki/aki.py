@@ -3,6 +3,7 @@ import discord
 from akinator_python import Akinator
 from redbot.core import commands
 from redbot.core.bot import Red
+from Star_Utils import Cog
 
 log = logging.getLogger("red.phenom4n4n.aki")
 
@@ -13,18 +14,11 @@ def channel_is_nsfw(channel) -> bool:
     return getattr(channel, "nsfw", False)
 
 
-class Aki(commands.Cog):
+class Aki(Cog):
     """Play Akinator in Discord!"""
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
-
-    __version__ = "1.2.0"
-
-    def format_help_for_context(self, ctx):
-        pre_processed = super().format_help_for_context(ctx)
-        n = "\n" if "\n\n" not in pre_processed else ""
-        return f"{pre_processed}{n}\nCog Version: {self.__version__}"
 
     async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
         return
@@ -43,7 +37,7 @@ class Aki(commands.Cog):
         aki = Akinator(lang=language)
         try:
             await ctx.typing()
-            question = aki.start_game()
+            aki.start_game()
             aki_color = discord.Color(0xE8BC90)
             view = AkiView(aki, aki_color, author_id=ctx.author.id)
             await view.start(ctx)
@@ -58,7 +52,7 @@ class AkiView(discord.ui.View):
         self.color = color
         self.num = 1
         self.author_id = author_id
-        super().__init__(timeout=60)
+        super().__init__(timeout=120)  # Increased timeout to reduce frequent restarts
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
@@ -66,7 +60,7 @@ class AkiView(discord.ui.View):
                 "This isn't your Akinator game.", ephemeral=True
             )
             return False
-        await interaction.response.defer()
+        await interaction.response.defer()  # Defer to reduce latency
         return True
 
     async def send_initial_message(
@@ -177,7 +171,7 @@ class AkiView(discord.ui.View):
 
     async def win(self, interaction: discord.Interaction):
         try:
-            winner = self.aki.win()
+            winner = self.aki.win()  # Ensure this uses the correct method to get the guess
             description = winner["description"]
             if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(description):
                 embed = self.get_nsfw_embed()
