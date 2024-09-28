@@ -23,7 +23,6 @@ SOFTWARE.
 """
 
 import logging
-
 import aiohttp
 import akinator
 import discord
@@ -31,13 +30,13 @@ from akinator.async_aki import Akinator
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
-
+from Star_Utils import Cog
 from .views import AkiView, channel_is_nsfw
 
 log = logging.getLogger("red.phenom4n4n.aki")
 
 
-class Aki(commands.Cog):
+class Aki(Cog):
     """
     Play Akinator in Discord!
     """
@@ -51,12 +50,6 @@ class Aki(commands.Cog):
         )
         self.session = aiohttp.ClientSession()
 
-    __version__ = "1.2.0"
-
-    def format_help_for_context(self, ctx):
-        pre_processed = super().format_help_for_context(ctx)
-        n = "\n" if "\n\n" not in pre_processed else ""
-        return f"{pre_processed}{n}\nCog Version: {self.__version__}"
 
     async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
         return
@@ -84,7 +77,8 @@ class Aki(commands.Cog):
             await ctx.send(
                 "Invalid language. Refer here to view valid languages.\n<https://github.com/NinjaSnail1080/akinator.py#functions>"
             )
-        except Exception:
+        except Exception as e:
+            log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
         else:
             aki_color = discord.Color(0xE8BC90)
