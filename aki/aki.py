@@ -1,16 +1,20 @@
+import logging
 import discord
 from akinator_python import Akinator
-from redbot.core import commands, Config
+from redbot.core import commands
 from redbot.core.bot import Red
-
-from .views import AkiView, channel_is_nsfw
 
 log = logging.getLogger("red.phenom4n4n.aki")
 
+NSFW_WORDS = ("porn", "sex")
+
+
+def channel_is_nsfw(channel) -> bool:
+    return getattr(channel, "nsfw", False)
+
+
 class Aki(commands.Cog):
-    """
-    Play Akinator in Discord!
-    """
+    """Play Akinator in Discord!"""
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
@@ -29,54 +33,180 @@ class Aki(commands.Cog):
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
     async def aki(self, ctx: commands.Context, language: str.lower = "en"):
-        """
-        Start a game of Akinator!
-        """
+        """Start a game of Akinator!"""
         if language not in {"en", "fr", "es", "de", "it", "nl", "pt", "tr", "ar", "ru", "jp"}:
             await ctx.send(
                 "Invalid language. Please choose from the following: en, fr, es, de, it, nl, pt, tr, ar, ru, jp"
             )
             return
 
-        aki = Akinator(language=language)
-        question = aki.start_game()
-        await ctx.send(question)
-
-        while aki.progression <= 80:
-            def check(m):
-                return m.author == ctx.author and m.channel == ctx.channel
-
-            try:
-                msg = await self.bot.wait_for("message", check=check, timeout=30.0)
-            except asyncio.TimeoutError:
-                await ctx.send("You took too long to respond!")
-                return
-
-            answer = msg.content.lower()
-            if answer not in ["y", "n", "idk", "p", "pn", "b"]:
-                await ctx.send("Please respond with 'y', 'n', 'idk', 'p', 'pn', or 'b'.")
-                continue
-
-            if answer == "b":
-                question = aki.go_back()
-            else:
-                question = aki.post_answer(answer)
-
-            await ctx.send(question)
-
-        aki.win()
-        await ctx.send(f"I guess: {aki.name} - {aki.description}\nIs this correct? (y/n)")
-
-        def check_final(m):
-            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ["y", "n"]
-
+        aki = Akinator(lang=language)
         try:
-            msg = await self.bot.wait_for("message", check=check_final, timeout=30.0)
-        except asyncio.TimeoutError:
-            await ctx.send("You took too long to respond!")
-            return
+            await ctx.typing()
+            question = aki.start_game()
+            aki_color = discord.Color(0xE8BC90)
+            view = AkiView(aki, aki_color, author_id=ctx.author.id)
+            await view.start(ctx)
+        except Exception as e:
+            log.error("An error occurred while starting the Akinator game: %s", e)
+            await ctx.send("I encountered an error while connecting to the Akinator servers.")
 
-        if msg.content.lower() == "y":
-            await ctx.send("Yay! I guessed it right!")
+
+class AkiView(discord.ui.View):
+    def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
+        self.aki = game
+        self.color = color
+        self.num = 1
+        self.author_id = author_id
+        super().__init__(timeout=60)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "This isn't your Akinator game.", ephemeral=True
+            )
+            return False
+        await interaction.response.defer()
+        return True
+
+    async def send_initial_message(
+        self, ctx: commands.Context, channel: discord.TextChannel
+    ) -> discord.Message:
+        return await channel.send(embed=self.current_question_embed(), view=self)
+
+    async def start(self, ctx: commands.Context) -> discord.Message:
+        return await self.send_initial_message(ctx, ctx.channel)
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
+    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.answer_question("y", interaction)
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.red)
+    async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.answer_question("n", interaction)
+
+    @discord.ui.button(label="I don't know", style=discord.ButtonStyle.blurple)
+    async def idk(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.answer_question("idk", interaction)
+
+    @discord.ui.button(label="Probably", style=discord.ButtonStyle.blurple)
+    async def probably(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.answer_question("p", interaction)
+
+    @discord.ui.button(label="Probably Not", style=discord.ButtonStyle.blurple)
+    async def probably_not(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.answer_question("pn", interaction)
+
+    @discord.ui.button(label="Back", style=discord.ButtonStyle.gray)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            self.aki.go_back()
+        except Exception:
+            await interaction.followup.send(
+                "You can't go back on the first question, try a different option instead.",
+                ephemeral=True,
+            )
         else:
-            await ctx.send("Oh no! Let's try again next time.")
+            self.num -= 1
+            await self.send_current_question(interaction)
+
+    @discord.ui.button(label="Win", style=discord.ButtonStyle.gray)
+    async def react_win(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.win(interaction)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
+    async def end(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.message.delete()
+        self.stop()
+
+    async def answer_question(self, answer: str, interaction: discord.Interaction):
+        self.num += 1
+        await self.answer(answer, interaction)
+        await self.send_current_question(interaction)
+
+    async def answer(self, message: str, interaction: discord.Interaction):
+        try:
+            self.aki.post_answer(message)
+        except Exception as error:
+            log.exception(
+                f"Encountered an exception while answering with {message} during Akinator session",
+                exc_info=True,
+            )
+            await self.edit_or_send(
+                interaction, content=f"Akinator game errored out:\n`{error}`", embed=None
+            )
+            self.stop()
+
+    async def edit_or_send(self, interaction: discord.Interaction, **kwargs):
+        try:
+            await interaction.message.edit(**kwargs)
+        except discord.NotFound:
+            await interaction.followup.send(**kwargs)
+        except discord.Forbidden:
+            pass
+
+    def current_question_embed(self):
+        e = discord.Embed(
+            color=self.color,
+            title=f"Question #{self.num}",
+            description=self.aki.question,
+        )
+        if self.aki.progression > 0:
+            e.set_footer(text=f"{round(self.aki.progression, 2)}% guessed")
+        return e
+
+    def get_winner_embed(self, winner: dict) -> discord.Embed:
+        win_embed = discord.Embed(
+            color=self.color,
+            title=f"I'm {round(float(winner['proba']) * 100)}% sure it's {winner['name']}!",
+            description=winner["description"],
+        )
+        win_embed.set_image(url=winner["absolute_picture_path"])
+        return win_embed
+
+    def get_nsfw_embed(self):
+        return discord.Embed(
+            color=self.color,
+            title="I guessed it, but this result is inappropriate.",
+            description="Try again in a NSFW channel.",
+        )
+
+    def text_is_nsfw(self, text: str) -> bool:
+        text = text.lower()
+        return any(word in text for word in NSFW_WORDS)
+
+    async def win(self, interaction: discord.Interaction):
+        try:
+            winner = self.aki.win()
+            description = winner["description"]
+            if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(description):
+                embed = self.get_nsfw_embed()
+            else:
+                embed = self.get_winner_embed(winner)
+        except Exception as e:
+            log.exception("An error occurred while trying to win an Akinator game.", exc_info=e)
+            embed = discord.Embed(
+                color=self.color,
+                title="An error occurred while trying to win the game.",
+                description="Try again later.",
+            )
+        await interaction.message.edit(embed=embed, view=None)
+        self.stop()
+
+    async def edit(self, interaction: discord.Interaction):
+        await interaction.message.edit(embed=self.current_question_embed(), view=self)
+
+    async def cancel(
+        self, interaction: discord.Interaction, message: str = "Akinator game cancelled."
+    ):
+        await self.edit_or_send(interaction, content=message, embed=None, view=None)
+        self.stop()
+
+    async def send_current_question(self, interaction: discord.Interaction):
+        if self.aki.progression < 80:
+            try:
+                await self.edit(interaction)
+            except discord.HTTPException:
+                await self.cancel(interaction)
+        else:
+            await self.win(interaction)
