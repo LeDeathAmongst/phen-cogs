@@ -20,24 +20,21 @@ class Aki(Cog):
     def __init__(self, bot: Red) -> None:
         self.bot = bot
 
-    __version__ = "1.2.0"
-
     async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
         return
 
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
-    async def aki(self, ctx: commands.Context, language: str = "en", theme: str = "characters"):
+    async def aki(self, ctx: commands.Context, theme: str = "characters"):
         """Start a game of Akinator!"""
         try:
-            language_enum = Language.from_str(language)
             theme_enum = Theme.from_str(theme)
-        except (InvalidLanguage, InvalidAnswer) as e:
+        except InvalidAnswer as e:
             await ctx.send(str(e))
             return
 
-        game = AsyncAkinator(language=language_enum, theme=theme_enum)
+        game = AsyncAkinator(child_mode=True, theme=theme_enum)
         try:
             await ctx.typing()
             question = await game.start_game()
