@@ -3,7 +3,7 @@ import discord
 from akinator_python import Akinator
 from redbot.core import commands
 from redbot.core.bot import Red
-from Star_Utils import Cog
+from Star_Utils import Cog, Loop  # Import the Loop class from your Star_Utils module
 
 log = logging.getLogger("red.phenom4n4n.aki")
 
@@ -34,10 +34,32 @@ class Aki(Cog):
             question = game.start_game()
             aki_color = discord.Color(0xE8BC90)
             view = AkiView(game, aki_color, author_id=ctx.author.id)
-            await view.start(ctx, question)
+
+            # Create a loop to manage the game session
+            self.game_loop = Loop(
+                cog=self,
+                name=f"Akinator Game for {ctx.author.id}",
+                function=self.game_session,
+                function_kwargs={"ctx": ctx, "view": view, "question": question},
+                seconds=5,  # Adjust the interval as needed
+                start_now=True,
+            )
         except Exception as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
+
+    async def game_session(self, ctx: commands.Context, view: discord.ui.View, question: str):
+        """Manage the game session."""
+        try:
+            await view.start(ctx, question)
+        except Exception as e:
+            log.error("An error occurred during the Akinator game session: %s", e)
+            await ctx.send("An error occurred during the game session.")
+
+    def stop_game(self):
+        """Stop the game loop."""
+        if hasattr(self, 'game_loop'):
+            self.game_loop.stop_all()
 
 
 class AkiView(discord.ui.View):
