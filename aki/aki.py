@@ -2,7 +2,8 @@ import logging
 import discord
 import asyncio
 
-from akinator import Akinator, AkinatorError
+from akinator.async_aki import Akinator
+from akinator.exceptions import AkiNoQuestions, AkiTimedOut
 from redbot.core import commands
 from redbot.core.bot import Red
 from Star_Utils import Cog
@@ -11,8 +12,10 @@ log = logging.getLogger("red.phenom4n4n.aki")
 
 NSFW_WORDS = ("porn", "sex")
 
+
 def channel_is_nsfw(channel) -> bool:
     return getattr(channel, "nsfw", False)
+
 
 class Aki(Cog):
     """Play Akinator in Discord!"""
@@ -29,17 +32,18 @@ class Aki(Cog):
     async def aki(self, ctx: commands.Context, theme: str = "characters"):
         """Start a game of Akinator!"""
         try:
-            game = Akinator(theme=theme, lang='en', child_mode=True)
+            game = Akinator()
             await ctx.typing()
-            question = game.start_game()
+            question = await game.start_game(child_mode=True)
             aki_color = discord.Color(0xE8BC90)
             view = AkiView(game, aki_color, author_id=ctx.author.id)
             await view.start(ctx, question)
-        except AkinatorError as e:
-            await ctx.send(f"An error occurred: {str(e)}")
+        except AkiTimedOut:
+            await ctx.send("The Akinator service timed out. Please try again later.")
         except Exception as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
+
 
 class AkiView(discord.ui.View):
     def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
@@ -89,10 +93,11 @@ class AkiView(discord.ui.View):
     @discord.ui.button(label="Back", style=discord.ButtonStyle.gray)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            question = self.game.go_back()["question"]
+            await self.game.back()
+            question = self.game.question
             self.num -= 1
             await self.send_current_question(interaction, question)
-        except AkinatorError:
+        except AkiNoQuestions:
             await interaction.followup.send(
                 "You can't go back on the first question, try a different option instead.",
                 ephemeral=True,
@@ -110,13 +115,13 @@ class AkiView(discord.ui.View):
     async def answer_question(self, answer: str, interaction: discord.Interaction):
         self.num += 1
         try:
-            progression = self.game.post_answer(answer)
-            if "name_proposition" in progression:
+            await self.game.answer(answer)
+            if self.game.progression > 80 or self.game.step >= 79:
                 await self.win(interaction)
                 return
-            question = progression["question"]
+            question = self.game.question
             await self.send_current_question(interaction, question)
-        except AkinatorError:
+        except AkiNoQuestions:
             await self.win(interaction)
 
     async def edit_or_send(self, interaction: discord.Interaction, **kwargs):
@@ -138,12 +143,13 @@ class AkiView(discord.ui.View):
         return e
 
     def get_winner_embed(self) -> discord.Embed:
+        guess = self.game.first_guess
         win_embed = discord.Embed(
             color=self.color,
-            title=f"I'm sure it's {self.game.name}!",
-            description=self.game.description,
+            title=f"I'm sure it's {guess['name']}!",
+            description=guess['description'],
         )
-        win_embed.set_image(url=self.game.photo)
+        win_embed.set_image(url=guess['absolute_picture_path'])
         return win_embed
 
     def get_nsfw_embed(self):
@@ -159,7 +165,9 @@ class AkiView(discord.ui.View):
 
     async def win(self, interaction: discord.Interaction):
         try:
-            if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(self.game.description):
+            guess = await self.game.win()
+            description = guess['description']
+            if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(description):
                 embed = self.get_nsfw_embed()
             else:
                 embed = self.get_winner_embed()
