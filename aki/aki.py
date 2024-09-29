@@ -33,12 +33,13 @@ class Aki(Cog):
         await ctx.typing()
         child_mode = not channel_is_nsfw(ctx.channel)
         try:
-            aki = Akinator(language=language, theme=theme, child_mode=child_mode)
-            question = aki.start_game()
+            # Check the correct initialization for Akinator
+            aki = Akinator()
+            question = aki.start_game(language=language, theme=theme, child_mode=child_mode)
         except AkinatorError as e:
             await ctx.send(f"An error occurred: {e}")
             return
-        except Exception as e:
+        except TypeError as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
             return
