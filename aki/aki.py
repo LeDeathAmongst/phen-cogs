@@ -1,7 +1,6 @@
 import logging
 import discord
-from akinator import Akinator
-from akinator.exceptions import AkiNoQuestions, AkiTimedOut
+from akinator_python import Akinator
 from redbot.core import commands
 from redbot.core.bot import Red
 from Star_Utils import Cog
@@ -27,17 +26,15 @@ class Aki(Cog):
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
-    async def aki(self, ctx: commands.Context, theme: str = "characters"):
+    async def aki(self, ctx: commands.Context):
         """Start a game of Akinator!"""
         try:
-            game = Akinator(theme=theme, language='en', child_mode=True)
+            game = Akinator(lang="en", child_mode=True)
             await ctx.typing()
             question = game.start_game()
             aki_color = discord.Color(0xE8BC90)
             view = AkiView(game, aki_color, author_id=ctx.author.id)
             await view.start(ctx, question)
-        except AkiTimedOut:
-            await ctx.send("The Akinator service timed out. Please try again later.")
         except Exception as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
@@ -95,7 +92,8 @@ class AkiView(discord.ui.View):
             question = self.game.question
             self.num -= 1
             await self.send_current_question(interaction, question)
-        except AkiNoQuestions:
+        except Exception as e:
+            log.error("An error occurred while going back: %s", e)
             await interaction.followup.send(
                 "You can't go back on the first question, try a different option instead.",
                 ephemeral=True,
@@ -114,12 +112,13 @@ class AkiView(discord.ui.View):
         self.num += 1
         try:
             self.game.post_answer(answer)
-            if self.game.progression > 80 or self.game.step >= 79:
+            if self.game.answer_id:
                 await self.win(interaction)
                 return
             question = self.game.question
             await self.send_current_question(interaction, question)
-        except AkiNoQuestions:
+        except Exception as e:
+            log.error("An error occurred while answering: %s", e)
             await self.win(interaction)
 
     async def edit_or_send(self, interaction: discord.Interaction, **kwargs):
