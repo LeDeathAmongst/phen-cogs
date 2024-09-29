@@ -5,7 +5,7 @@ from akinator_python import Akinator, AkinatorError
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
-from Star_Utils import Cog, Buttons, Loop
+from Star_Utils import Cog, Buttons
 
 log = logging.getLogger("red.star.aki")
 
@@ -207,7 +207,3 @@ class AkiView(discord.ui.View):
     async def end(self, interaction: discord.Interaction):
         await self.message.delete()
         self.stop()
-
-# To add the cog to your bot
-def setup(bot: Red):
-    bot.add_cog(Aki(bot))
