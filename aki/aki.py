@@ -28,7 +28,6 @@ class Aki(Cog):
         )
         self.session = aiohttp.ClientSession()
         self.active_loops = []
-        logs = self.logs()
 
     async def cog_unload(self):
         await self.session.close()
