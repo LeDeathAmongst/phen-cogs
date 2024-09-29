@@ -29,13 +29,12 @@ class Aki(Cog):
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
-    async def aki(self, ctx: commands.Context):
+    async def aki(self, ctx: commands.Context, language: str = "en"):
         """Start a game of Akinator!"""
         await ctx.typing()
-        child_mode = not channel_is_nsfw(ctx.channel)
         try:
-            aki = Akinator()
-            question = aki.start_game(child_mode=child_mode)  # Corrected initialization
+            aki = Akinator(language=language)
+            question = aki.start_game()  # Removed child_mode argument
         except AkinatorError as e:
             await ctx.send(f"An error occurred: {e}")
             return
