@@ -34,7 +34,7 @@ class Aki(Cog):
         await ctx.typing()
         try:
             aki = Akinator()
-            question = aki.start_game()  # Removed child_mode argument
+            question = aki.start_game(lang=en)  # Removed child_mode argument
         except AkinatorError as e:
             await ctx.send(f"An error occurred: {e}")
             return
