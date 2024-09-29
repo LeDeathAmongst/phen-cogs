@@ -1,8 +1,6 @@
 import logging
 import discord
-import asyncio
-
-from akinator.async_aki import Akinator
+from akinator import Akinator
 from akinator.exceptions import AkiNoQuestions, AkiTimedOut
 from redbot.core import commands
 from redbot.core.bot import Red
@@ -32,9 +30,9 @@ class Aki(Cog):
     async def aki(self, ctx: commands.Context, theme: str = "characters"):
         """Start a game of Akinator!"""
         try:
-            game = Akinator()
+            game = Akinator(theme=theme, language='en', child_mode=True)
             await ctx.typing()
-            question = await game.start_game(child_mode=True)
+            question = game.start_game()
             aki_color = discord.Color(0xE8BC90)
             view = AkiView(game, aki_color, author_id=ctx.author.id)
             await view.start(ctx, question)
@@ -93,7 +91,7 @@ class AkiView(discord.ui.View):
     @discord.ui.button(label="Back", style=discord.ButtonStyle.gray)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            await self.game.back()
+            self.game.go_back()
             question = self.game.question
             self.num -= 1
             await self.send_current_question(interaction, question)
@@ -115,7 +113,7 @@ class AkiView(discord.ui.View):
     async def answer_question(self, answer: str, interaction: discord.Interaction):
         self.num += 1
         try:
-            await self.game.answer(answer)
+            self.game.post_answer(answer)
             if self.game.progression > 80 or self.game.step >= 79:
                 await self.win(interaction)
                 return
@@ -143,13 +141,12 @@ class AkiView(discord.ui.View):
         return e
 
     def get_winner_embed(self) -> discord.Embed:
-        guess = self.game.first_guess
         win_embed = discord.Embed(
             color=self.color,
-            title=f"I'm sure it's {guess['name']}!",
-            description=guess['description'],
+            title=f"I'm sure it's {self.game.name}!",
+            description=self.game.description,
         )
-        win_embed.set_image(url=guess['absolute_picture_path'])
+        win_embed.set_image(url=self.game.photo)
         return win_embed
 
     def get_nsfw_embed(self):
@@ -165,9 +162,7 @@ class AkiView(discord.ui.View):
 
     async def win(self, interaction: discord.Interaction):
         try:
-            guess = await self.game.win()
-            description = guess['description']
-            if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(description):
+            if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(self.game.description):
                 embed = self.get_nsfw_embed()
             else:
                 embed = self.get_winner_embed()
