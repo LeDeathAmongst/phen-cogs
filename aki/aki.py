@@ -58,7 +58,7 @@ class Aki(Cog):
         await view.start(ctx)
 
 
-class AkiView(Buttons):
+class AkiView(discord.ui.View):
     def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
         super().__init__(timeout=120)
         self.game = game
@@ -84,7 +84,8 @@ class AkiView(Buttons):
             function=self.button_callback,
             members=[self.author_id]
         )
-        self.add_item(self.buttons_view)
+        for button in self.buttons_view.buttons:
+            self.add_item(button)
 
     async def button_callback(self, view: Buttons, interaction: discord.Interaction):
         custom_id = interaction.data["custom_id"]
@@ -209,3 +210,7 @@ class AkiView(Buttons):
     async def end(self, interaction: discord.Interaction):
         await self.message.delete()
         self.stop()
+
+# To add the cog to your bot
+def setup(bot: Red):
+    bot.add_cog(Aki(bot))
