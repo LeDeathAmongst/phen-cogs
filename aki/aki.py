@@ -1,7 +1,7 @@
 import logging
 import discord
 import aiohttp
-from akinator_python import Akinator
+from akinator_python import Akinator, InvalidLanguageError
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
