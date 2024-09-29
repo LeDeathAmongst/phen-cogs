@@ -20,6 +20,13 @@ class Aki(Cog):
     def __init__(self, bot: Red) -> None:
         self.bot = bot
 
+    __version__ = "1.2.0"
+
+    def format_help_for_context(self, ctx):
+        pre_processed = super().format_help_for_context(ctx)
+        n = "\n" if "\n\n" not in pre_processed else ""
+        return f"{pre_processed}{n}\nCog Version: {self.__version__}"
+
     async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
         return
 
@@ -35,17 +42,17 @@ class Aki(Cog):
             await ctx.send(str(e))
             return
 
-        game = Akinator(language=language_enum, theme=theme_enum)
-        try:
-            await ctx.typing()
-            question = await game.start()
-            aki_color = discord.Color(0xE8BC90)
-            view = AkiView(game, aki_color, author_id=ctx.author.id)
-            await view.start(ctx, question)
-        except Exception as e:
-            log.error("An error occurred while starting the Akinator game: %s", e)
-            await ctx.send("I encountered an error while connecting to the Akinator servers.")
-
+        connector = aiohttp.TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            game = Akinator(language=language_enum, theme=theme_enum, session=session)
+            try:
+                await ctx.typing()
+                question = await game.start()
+                aki_color = discord.Color(0xE8BC90)
+                view = AkiView(game, aki_color, author_id=ctx.author.id)
+                await view.start(ctx, question)
+            except Exception as e:
+                log.error("An error occurred while starting the Akinator game: %s", e)
 
 class AkiView(discord.ui.View):
     def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
@@ -53,7 +60,7 @@ class AkiView(discord.ui.View):
         self.color = color
         self.num = 1
         self.author_id = author_id
-        super().__init__(timeout=120)  # Increased timeout to reduce frequent restarts
+        super().__init__(timeout=120)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
@@ -61,7 +68,7 @@ class AkiView(discord.ui.View):
                 "This isn't your Akinator game.", ephemeral=True
             )
             return False
-        await interaction.response.defer()  # Defer to reduce latency
+        await interaction.response.defer()
         return True
 
     async def send_initial_message(
