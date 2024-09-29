@@ -29,23 +29,11 @@ class Aki(Cog):
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
-    async def aki(
-        self,
-        ctx: commands.Context,
-        language: str = "en",
-        theme: str = "characters",
-        child_mode: bool = False
-    ):
-        """Start a game of Akinator!
-
-        You can specify the language, theme, and child mode.
-        - language: Language for the game (default: en)
-        - theme: Theme of the game (characters, objects, animals)
-        - child_mode: Enable child mode (default: False)
-        """
+    async def aki(self, ctx: commands.Context):
+        """Start a game of Akinator!"""
         await ctx.typing()
         try:
-            aki = Akinator(language=language, theme=theme, child_mode=child_mode)
+            aki = Akinator(lang="en")
             question = aki.start_game()
         except AkinatorError as e:
             await ctx.send(f"An error occurred: {e}")
