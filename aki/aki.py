@@ -5,6 +5,7 @@ from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
 from Star_Utils import Cog
+
 log = logging.getLogger("red.star.aki")
 
 NSFW_WORDS = ("porn", "sex")
