@@ -1,7 +1,7 @@
 import logging
 import discord
 import aiohttp
-from akinator_python import Akinator as akinator
+from akinator_python import Akinator
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
@@ -19,25 +19,12 @@ def channel_is_nsfw(channel) -> bool:
 class Aki(Cog):
     """Play Akinator in Discord!"""
 
-    def __init__(self, bot: Red) -> None:
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.config = Config.get_conf(
-            self,
-            identifier=8237578807127857,
-            force_registration=True,
-        )
         self.session = aiohttp.ClientSession()
-        self.active_loops = []
-
-    __version__ = "1.2.0"
-
-    async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
-        return
 
     async def cog_unload(self):
         await self.session.close()
-        for loop in self.active_loops:
-            loop.stop_all()
 
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
@@ -51,29 +38,29 @@ class Aki(Cog):
             await aki.start_game(
                 language=language.replace(" ", "_"),
                 child_mode=child_mode,
-                client_session=self.session,
             )
-        except akinator.InvalidLanguageError:
+        except InvalidLanguageError:
             await ctx.send(
                 "Invalid language. Refer here to view valid languages.\n<https://github.com/NinjaSnail1080/akinator.py#functions>"
             )
+            return
         except Exception as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
-        else:
-            aki_color = discord.Color(0xE8BC90)
-            view = AkiView(aki, aki_color, author_id=ctx.author.id)
-            await view.start(ctx)
+            return
 
+        aki_color = discord.Color(0xE8BC90)
+        view = AkiView(aki, aki_color, author_id=ctx.author.id)
+        await view.start(ctx)
 
 class AkiView(discord.ui.View):
     def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
+        super().__init__(timeout=120)
         self.game = game
         self.color = color
         self.num = 1
         self.author_id = author_id
         self.message = None
-        super().__init__(timeout=120)
         self.add_buttons()
 
     def add_buttons(self):
@@ -87,31 +74,8 @@ class AkiView(discord.ui.View):
             {"label": "Win", "style": discord.ButtonStyle.gray, "custom_id": "win"},
             {"label": "Cancel", "style": discord.ButtonStyle.gray, "custom_id": "cancel"},
         ]
-        self.buttons_view = Buttons(
-            buttons=buttons,
-            function=self.button_callback,
-            members=[self.author_id]
-        )
-        self.add_item(self.buttons_view)
-
-    async def button_callback(self, view: Buttons, interaction: discord.Interaction):
-        custom_id = interaction.data["custom_id"]
-        if custom_id == "yes":
-            await self.answer_question("y", interaction)
-        elif custom_id == "no":
-            await self.answer_question("n", interaction)
-        elif custom_id == "idk":
-            await self.answer_question("idk", interaction)
-        elif custom_id == "probably":
-            await self.answer_question("p", interaction)
-        elif custom_id == "probably_not":
-            await self.answer_question("pn", interaction)
-        elif custom_id == "back":
-            await self.back(interaction)
-        elif custom_id == "win":
-            await self.win(interaction)
-        elif custom_id == "cancel":
-            await self.end(interaction)
+        for button in buttons:
+            self.add_item(discord.ui.Button(label=button["label"], style=button["style"], custom_id=button["custom_id"]))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
@@ -122,9 +86,7 @@ class AkiView(discord.ui.View):
         await interaction.response.defer()
         return True
 
-    async def send_initial_message(
-        self, ctx: commands.Context, channel: discord.TextChannel
-    ) -> discord.Message:
+    async def send_initial_message(self, ctx: commands.Context, channel: discord.TextChannel) -> discord.Message:
         question = self.game.question
         self.message = await channel.send(embed=self.current_question_embed(question), view=self)
         return self.message
