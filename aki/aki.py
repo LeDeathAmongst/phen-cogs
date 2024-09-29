@@ -156,6 +156,8 @@ class AkiView(discord.ui.View):
         )
 
     def text_is_nsfw(self, text: str) -> bool:
+        if text is None:
+            return False
         text = text.lower()
         return any(word in text for word in NSFW_WORDS)
 
