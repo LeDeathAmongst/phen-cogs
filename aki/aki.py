@@ -29,11 +29,23 @@ class Aki(Cog):
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
-    async def aki(self, ctx: commands.Context, language: str = "en"):
-        """Start a game of Akinator!"""
+    async def aki(
+        self,
+        ctx: commands.Context,
+        language: str = "en",
+        theme: str = "characters",
+        child_mode: bool = False
+    ):
+        """Start a game of Akinator!
+
+        You can specify the language, theme, and child mode.
+        - language: Language for the game (default: en)
+        - theme: Theme of the game (characters, objects, animals)
+        - child_mode: Enable child mode (default: False)
+        """
         await ctx.typing()
         try:
-            aki = Akinator()
+            aki = Akinator(language=language, theme=theme, child_mode=child_mode)
             question = aki.start_game()
         except AkinatorError as e:
             await ctx.send(f"An error occurred: {e}")
@@ -46,7 +58,6 @@ class Aki(Cog):
         aki_color = discord.Color(0xE8BC90)
         view = AkiView(aki, aki_color, author_id=ctx.author.id)
         await view.start(ctx)
-
 
 class AkiView(discord.ui.View):
     def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
