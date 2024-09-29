@@ -29,18 +29,17 @@ class Aki(Cog):
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
-    async def aki(self, ctx: commands.Context, language: str = "en", theme: str = "characters"):
+    async def aki(self, ctx: commands.Context):
         """Start a game of Akinator!"""
         await ctx.typing()
         child_mode = not channel_is_nsfw(ctx.channel)
         try:
-            # Check the correct initialization for Akinator
             aki = Akinator()
-            question = aki.start_game(language=language, theme=theme, child_mode=child_mode)
+            question = aki.start_game(child_mode=child_mode)  # Corrected initialization
         except AkinatorError as e:
             await ctx.send(f"An error occurred: {e}")
             return
-        except TypeError as e:
+        except Exception as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
             return
@@ -113,7 +112,7 @@ class AkiView(discord.ui.View):
         try:
             self.game.go_back()
             await self.send_current_question(interaction)
-        except AkinatorError:  # Use a more general exception if specific one isn't available
+        except AkinatorError:  # Handle general exception if specific one isn't available
             await interaction.followup.send(
                 "You can't go back on the first question, try a different option instead.",
                 ephemeral=True,
@@ -184,5 +183,5 @@ class AkiView(discord.ui.View):
         self.stop()
 
 # To add the cog to your bot
-def setup(bot: Red):
-    bot.add_cog(Aki(bot))
+async def setup(bot: Red):
+    await bot.add_cog(Aki(bot))
