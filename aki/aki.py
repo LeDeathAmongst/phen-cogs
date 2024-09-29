@@ -1,9 +1,11 @@
 import logging
 import discord
+import aiohttp
 from akinator_python import Akinator
 from redbot.core import commands
 from redbot.core.bot import Red
-from Star_Utils import Cog, Loop  # Import the Loop class from your Star_Utils module
+from redbot.core.config import Config
+from Star_Utils import Cog, Buttons, Loop
 
 log = logging.getLogger("red.phenom4n4n.aki")
 
@@ -19,47 +21,49 @@ class Aki(Cog):
 
     def __init__(self, bot: Red) -> None:
         self.bot = bot
+        self.config = Config.get_conf(
+            self,
+            identifier=8237578807127857,
+            force_registration=True,
+        )
+        self.session = aiohttp.ClientSession()
+        self.active_loops = []
+
+    __version__ = "1.2.0"
 
     async def red_delete_data_for_user(self, *, requester: str, user_id: int) -> None:
         return
 
+    async def cog_unload(self):
+        await self.session.close()
+        for loop in self.active_loops:
+            loop.stop_all()
+
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
     @commands.command(aliases=["akinator"])
-    async def aki(self, ctx: commands.Context):
+    async def aki(self, ctx: commands.Context, language: str = "en"):
         """Start a game of Akinator!"""
+        await ctx.typing()
+        aki = Akinator()
+        child_mode = not channel_is_nsfw(ctx.channel)
         try:
-            game = Akinator(lang="en", child_mode=True)
-            await ctx.typing()
-            question = game.start_game()
-            aki_color = discord.Color(0xE8BC90)
-            view = AkiView(game, aki_color, author_id=ctx.author.id)
-
-            # Create a loop to manage the game session
-            self.game_loop = Loop(
-                cog=self,
-                name=f"Akinator Game for {ctx.author.id}",
-                function=self.game_session,
-                function_kwargs={"ctx": ctx, "view": view, "question": question},
-                seconds=5,  # Adjust the interval as needed
-                start_now=True,
+            await aki.start_game(
+                language=language.replace(" ", "_"),
+                child_mode=child_mode,
+                client_session=self.session,
+            )
+        except akinator.InvalidLanguageError:
+            await ctx.send(
+                "Invalid language. Refer here to view valid languages.\n<https://github.com/NinjaSnail1080/akinator.py#functions>"
             )
         except Exception as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
-
-    async def game_session(self, ctx: commands.Context, view: discord.ui.View, question: str):
-        """Manage the game session."""
-        try:
-            await view.start(ctx, question)
-        except Exception as e:
-            log.error("An error occurred during the Akinator game session: %s", e)
-            await ctx.send("An error occurred during the game session.")
-
-    def stop_game(self):
-        """Stop the game loop."""
-        if hasattr(self, 'game_loop'):
-            self.game_loop.stop_all()
+        else:
+            aki_color = discord.Color(0xE8BC90)
+            view = AkiView(aki, aki_color, author_id=ctx.author.id)
+            await view.start(ctx)
 
 
 class AkiView(discord.ui.View):
@@ -68,7 +72,46 @@ class AkiView(discord.ui.View):
         self.color = color
         self.num = 1
         self.author_id = author_id
+        self.message = None
         super().__init__(timeout=120)
+        self.add_buttons()
+
+    def add_buttons(self):
+        buttons = [
+            {"label": "Yes", "style": discord.ButtonStyle.green, "custom_id": "yes"},
+            {"label": "No", "style": discord.ButtonStyle.red, "custom_id": "no"},
+            {"label": "I don't know", "style": discord.ButtonStyle.blurple, "custom_id": "idk"},
+            {"label": "Probably", "style": discord.ButtonStyle.blurple, "custom_id": "probably"},
+            {"label": "Probably Not", "style": discord.ButtonStyle.blurple, "custom_id": "probably_not"},
+            {"label": "Back", "style": discord.ButtonStyle.gray, "custom_id": "back"},
+            {"label": "Win", "style": discord.ButtonStyle.gray, "custom_id": "win"},
+            {"label": "Cancel", "style": discord.ButtonStyle.gray, "custom_id": "cancel"},
+        ]
+        self.buttons_view = Buttons(
+            buttons=buttons,
+            function=self.button_callback,
+            members=[self.author_id]
+        )
+        self.add_item(self.buttons_view)
+
+    async def button_callback(self, view: Buttons, interaction: discord.Interaction):
+        custom_id = interaction.data["custom_id"]
+        if custom_id == "yes":
+            await self.answer_question("y", interaction)
+        elif custom_id == "no":
+            await self.answer_question("n", interaction)
+        elif custom_id == "idk":
+            await self.answer_question("idk", interaction)
+        elif custom_id == "probably":
+            await self.answer_question("p", interaction)
+        elif custom_id == "probably_not":
+            await self.answer_question("pn", interaction)
+        elif custom_id == "back":
+            await self.back(interaction)
+        elif custom_id == "win":
+            await self.win(interaction)
+        elif custom_id == "cancel":
+            await self.end(interaction)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
@@ -80,55 +123,14 @@ class AkiView(discord.ui.View):
         return True
 
     async def send_initial_message(
-        self, ctx: commands.Context, channel: discord.TextChannel, question: str
+        self, ctx: commands.Context, channel: discord.TextChannel
     ) -> discord.Message:
-        return await channel.send(embed=self.current_question_embed(question), view=self)
+        question = self.game.question
+        self.message = await channel.send(embed=self.current_question_embed(question), view=self)
+        return self.message
 
-    async def start(self, ctx: commands.Context, question: str) -> discord.Message:
-        return await self.send_initial_message(ctx, ctx.channel, question)
-
-    @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
-    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question("y", interaction)
-
-    @discord.ui.button(label="No", style=discord.ButtonStyle.red)
-    async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question("n", interaction)
-
-    @discord.ui.button(label="I don't know", style=discord.ButtonStyle.blurple)
-    async def idk(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question("idk", interaction)
-
-    @discord.ui.button(label="Probably", style=discord.ButtonStyle.blurple)
-    async def probably(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question("p", interaction)
-
-    @discord.ui.button(label="Probably Not", style=discord.ButtonStyle.blurple)
-    async def probably_not(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question("pn", interaction)
-
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.gray)
-    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            self.game.go_back()
-            question = self.game.question
-            self.num -= 1
-            await self.send_current_question(interaction, question)
-        except Exception as e:
-            log.error("An error occurred while going back: %s", e)
-            await interaction.followup.send(
-                "You can't go back on the first question, try a different option instead.",
-                ephemeral=True,
-            )
-
-    @discord.ui.button(label="Win", style=discord.ButtonStyle.gray)
-    async def react_win(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.win(interaction)
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
-    async def end(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.message.delete()
-        self.stop()
+    async def start(self, ctx: commands.Context) -> discord.Message:
+        return await self.send_initial_message(ctx, ctx.channel)
 
     async def answer_question(self, answer: str, interaction: discord.Interaction):
         self.num += 1
@@ -138,18 +140,33 @@ class AkiView(discord.ui.View):
                 await self.win(interaction)
                 return
             question = self.game.question
-            await self.send_current_question(interaction, question)
+            await self.update_message(question)
         except Exception as e:
             log.error("An error occurred while answering: %s", e)
             await self.win(interaction)
 
-    async def edit_or_send(self, interaction: discord.Interaction, **kwargs):
+    async def back(self, interaction: discord.Interaction):
         try:
-            await interaction.message.edit(**kwargs)
-        except discord.NotFound:
-            await interaction.followup.send(**kwargs)
-        except discord.Forbidden:
-            pass
+            self.game.go_back()
+            question = self.game.question
+            self.num -= 1
+            await self.update_message(question)
+        except Exception as e:
+            log.error("An error occurred while going back: %s", e)
+            await interaction.followup.send(
+                "You can't go back on the first question, try a different option instead.",
+                ephemeral=True,
+            )
+
+    async def update_message(self, question: str):
+        """Update the original message with the new question."""
+        if self.message:
+            try:
+                await self.message.edit(embed=self.current_question_embed(question))
+            except discord.NotFound:
+                log.error("The message to edit was not found.")
+            except discord.Forbidden:
+                log.error("Editing the message is forbidden.")
 
     def current_question_embed(self, question: str):
         e = discord.Embed(
@@ -196,20 +213,9 @@ class AkiView(discord.ui.View):
                 title="An error occurred while trying to win the game.",
                 description="Try again later.",
             )
-        await interaction.message.edit(embed=embed, view=None)
+        await self.message.edit(embed=embed, view=None)
         self.stop()
 
-    async def send_current_question(self, interaction: discord.Interaction, question: str = None):
-        if self.game.progression < 80:
-            try:
-                await self.edit_or_send(interaction, embed=self.current_question_embed(question))
-            except discord.HTTPException:
-                await self.cancel(interaction)
-        else:
-            await self.win(interaction)
-
-    async def cancel(
-        self, interaction: discord.Interaction, message: str = "Akinator game cancelled."
-    ):
-        await self.edit_or_send(interaction, content=message, embed=None, view=None)
+    async def end(self, interaction: discord.Interaction):
+        await self.message.delete()
         self.stop()
