@@ -2,13 +2,7 @@ import logging
 import discord
 import asyncio
 
-from akinator import (
-    CantGoBackAnyFurther,
-    InvalidAnswer,
-    AsyncAkinator,
-    Answer,
-    Theme,
-)
+from akinator import Akinator, AkinatorError
 from redbot.core import commands
 from redbot.core.bot import Red
 from Star_Utils import Cog
@@ -17,10 +11,8 @@ log = logging.getLogger("red.phenom4n4n.aki")
 
 NSFW_WORDS = ("porn", "sex")
 
-
 def channel_is_nsfw(channel) -> bool:
     return getattr(channel, "nsfw", False)
-
 
 class Aki(Cog):
     """Play Akinator in Discord!"""
@@ -37,25 +29,20 @@ class Aki(Cog):
     async def aki(self, ctx: commands.Context, theme: str = "characters"):
         """Start a game of Akinator!"""
         try:
-            theme_enum = Theme.from_str(theme)
-        except InvalidAnswer as e:
-            await ctx.send(str(e))
-            return
-
-        game = AsyncAkinator(child_mode=True, theme=theme_enum)
-        try:
+            game = Akinator(theme=theme, lang='en', child_mode=True)
             await ctx.typing()
-            question = await game.start_game()
+            question = game.start_game()
             aki_color = discord.Color(0xE8BC90)
             view = AkiView(game, aki_color, author_id=ctx.author.id)
             await view.start(ctx, question)
+        except AkinatorError as e:
+            await ctx.send(f"An error occurred: {str(e)}")
         except Exception as e:
             log.error("An error occurred while starting the Akinator game: %s", e)
             await ctx.send("I encountered an error while connecting to the Akinator servers.")
 
-
 class AkiView(discord.ui.View):
-    def __init__(self, game: AsyncAkinator, color: discord.Color, *, author_id: int):
+    def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
         self.game = game
         self.color = color
         self.num = 1
@@ -81,31 +68,31 @@ class AkiView(discord.ui.View):
 
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.green)
     async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question(Answer.Yes, interaction)
+        await self.answer_question("y", interaction)
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.red)
     async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question(Answer.No, interaction)
+        await self.answer_question("n", interaction)
 
     @discord.ui.button(label="I don't know", style=discord.ButtonStyle.blurple)
     async def idk(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question(Answer.Idk, interaction)
+        await self.answer_question("idk", interaction)
 
     @discord.ui.button(label="Probably", style=discord.ButtonStyle.blurple)
     async def probably(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question(Answer.Probably, interaction)
+        await self.answer_question("p", interaction)
 
     @discord.ui.button(label="Probably Not", style=discord.ButtonStyle.blurple)
     async def probably_not(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.answer_question(Answer.ProbablyNot, interaction)
+        await self.answer_question("pn", interaction)
 
     @discord.ui.button(label="Back", style=discord.ButtonStyle.gray)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            question = await self.game.back()
+            question = self.game.go_back()["question"]
             self.num -= 1
             await self.send_current_question(interaction, question)
-        except CantGoBackAnyFurther:
+        except AkinatorError:
             await interaction.followup.send(
                 "You can't go back on the first question, try a different option instead.",
                 ephemeral=True,
@@ -120,15 +107,16 @@ class AkiView(discord.ui.View):
         await interaction.message.delete()
         self.stop()
 
-    async def answer_question(self, answer: Answer, interaction: discord.Interaction):
+    async def answer_question(self, answer: str, interaction: discord.Interaction):
         self.num += 1
         try:
-            question = await self.game.answer(answer)
-            if question is None:
+            progression = self.game.post_answer(answer)
+            if "name_proposition" in progression:
                 await self.win(interaction)
                 return
+            question = progression["question"]
             await self.send_current_question(interaction, question)
-        except NoMoreQuestions:
+        except AkinatorError:
             await self.win(interaction)
 
     async def edit_or_send(self, interaction: discord.Interaction, **kwargs):
@@ -150,13 +138,12 @@ class AkiView(discord.ui.View):
         return e
 
     def get_winner_embed(self) -> discord.Embed:
-        guess = self.game.first_guess
         win_embed = discord.Embed(
             color=self.color,
-            title=f"I'm sure it's {guess.name}!",
-            description=guess.description,
+            title=f"I'm sure it's {self.game.name}!",
+            description=self.game.description,
         )
-        win_embed.set_image(url=guess.absolute_picture_path)
+        win_embed.set_image(url=self.game.photo)
         return win_embed
 
     def get_nsfw_embed(self):
@@ -172,9 +159,7 @@ class AkiView(discord.ui.View):
 
     async def win(self, interaction: discord.Interaction):
         try:
-            guess = await self.game.win()
-            description = guess.description
-            if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(description):
+            if not channel_is_nsfw(interaction.channel) and self.text_is_nsfw(self.game.description):
                 embed = self.get_nsfw_embed()
             else:
                 embed = self.get_winner_embed()
