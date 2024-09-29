@@ -1,6 +1,6 @@
 import logging
 import discord
-from akinator_python import Akinator, AkinatorError, CantGoBackAnyFurther
+from akinator_python import Akinator, AkinatorError
 from redbot.core import commands
 from redbot.core.bot import Red
 from redbot.core.config import Config
@@ -111,7 +111,7 @@ class AkiView(discord.ui.View):
         try:
             self.game.go_back()
             await self.send_current_question(interaction)
-        except CantGoBackAnyFurther:
+        except AkinatorError:  # Use a more general exception if specific one isn't available
             await interaction.followup.send(
                 "You can't go back on the first question, try a different option instead.",
                 ephemeral=True,
