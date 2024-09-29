@@ -58,7 +58,7 @@ class Aki(Cog):
         await view.start(ctx)
 
 
-class AkiView(discord.ui.View):
+class AkiView(Buttons):
     def __init__(self, game: Akinator, color: discord.Color, *, author_id: int):
         super().__init__(timeout=120)
         self.game = game
