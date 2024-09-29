@@ -1,6 +1,14 @@
 import logging
 import discord
-from akinator import AsyncAkinator, Answer, Language, Theme, CantGoBackAnyFurther, NoMoreQuestions, InvalidAnswer, InvalidLanguage
+import asyncio
+
+from akinator import (
+    CantGoBackAnyFurther,
+    InvalidAnswer,
+    AsyncAkinator,
+    Answer,
+    Theme,
+)
 from redbot.core import commands
 from redbot.core.bot import Red
 from Star_Utils import Cog
