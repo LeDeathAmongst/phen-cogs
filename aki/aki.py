@@ -7,7 +7,7 @@ from redbot.core.bot import Red
 from redbot.core.config import Config
 from Star_Utils import Cog, Buttons, Loop
 
-log = logging.getLogger("red.phenom4n4n.aki")
+log = logging.getLogger("red.star.aki")
 
 NSFW_WORDS = ("porn", "sex")
 
@@ -27,12 +27,9 @@ class Aki(Cog):
             force_registration=True,
         )
         self.session = aiohttp.ClientSession()
-        self.active_loops = []
 
     async def cog_unload(self):
         await self.session.close()
-        for loop in self.active_loops:
-            loop.stop_all()
 
     @commands.max_concurrency(1, commands.BucketType.channel)
     @commands.bot_has_permissions(embed_links=True, add_reactions=True)
@@ -41,7 +38,7 @@ class Aki(Cog):
         """Start a game of Akinator!"""
         await ctx.typing()
         child_mode = not channel_is_nsfw(ctx.channel)
-        language = language or "en"  # Default to English if no language is provided
+        language = language.lower().replace(" ", "_")  # Normalize the language input
         try:
             aki = Akinator(lang=language, child_mode=child_mode)
             question = aki.start_game()
