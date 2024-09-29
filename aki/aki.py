@@ -33,7 +33,7 @@ class Aki(Cog):
         """Start a game of Akinator!"""
         await ctx.typing()
         try:
-            aki = Akinator(lang=en)
+            aki = Akinator()
             question = aki.start_game()
         except AkinatorError as e:
             await ctx.send(f"An error occurred: {e}")
