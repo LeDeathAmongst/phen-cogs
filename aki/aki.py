@@ -1,3 +1,4 @@
+import aiohttp
 import logging
 import discord
 from asyncakinator import Akinator, Answer, Language, Theme, InvalidAnswer, CanNotGoBack, NoMoreQuestions
